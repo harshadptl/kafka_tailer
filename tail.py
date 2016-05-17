@@ -8,6 +8,7 @@ import os
 import socket
 import sys
 import time
+import shelve
 
 from pykafka import KafkaClient
 
@@ -32,6 +33,7 @@ class Tailer(object):
         self.inode_number = os.stat(file_path).st_ino
         self.file = open(file_path, 'rb')
         self.start_pos = self.file.tell()
+        self.shelve = shelve.open("/tmp/kakfa_tailer_offests")
         if end:
             self.seek_end()
 
@@ -48,9 +50,9 @@ class Tailer(object):
         """
         trailing = True
         while 1:
-            where = self.file.tell()
+            where = self.shelve.get('offset', 0)
             line = self.file.readline()
-
+            print "WHERE =",where
             if line:
 
 
@@ -65,7 +67,9 @@ class Tailer(object):
 
 
                 trailing = False
+                self.shelve['prev_offset'] = self.shelve['offset']
                 yield line
+                self.shelve['offset'] = self.file.tell()
             else:
                 trailing = True
                 # print "SEEK : ", where
@@ -80,6 +84,7 @@ class Tailer(object):
                         self.file = open(self.filepath, 'rb')
                         self.inode_number = os.stat(self.filepath).st_ino
                         self.file.seek(0, 0)
+                        self.shelve['offset'] = 0
                 # If not, wait for new log to be created.
                 except (OSError, IOError):
                     print "EXCEPT"
@@ -130,7 +135,7 @@ class KafkaProd(object):
                 min_queued_messages=self.batch_size) as producer:
             count = 0
             # Continously tail for the log using log_tailer.py
-            for line in Tailer(filepath, end=True).follow(0.01):
+            for line in Tailer(filepath, end=True).follow(2):
                 count += 1
                 producer.produce("{}\t{}\t{}".format(self.logger_name, line,
                                                      self.ip_address),
