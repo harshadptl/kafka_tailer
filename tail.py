@@ -50,7 +50,10 @@ class Tailer(object):
         """
         trailing = True
         while 1:
-            where = self.shelve.get('offset', 0)
+            try:
+                where = self.shelve.get('offset', 0)
+            except:
+                where = 0
             self.seek(where)
             line = self.file.readline()
             if line:
