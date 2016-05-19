@@ -27,13 +27,13 @@ class Tailer(object):
 
     line_terminators = ('\r\n', '\n', '\r')
 
-    def __init__(self, file_path, read_size=1024, end=False):
+    def __init__(self, file_path, logger_name, read_size=1024, end=False):
         self.read_size = read_size
         self.filepath = file_path
         self.inode_number = os.stat(file_path).st_ino
         self.file = open(file_path, 'rb')
         self.start_pos = self.file.tell()
-        self.shelve = shelve.open("/tmp/kakfa_tailer_offests_%d" % self.inode_number)
+        self.shelve = shelve.open("/tmp/kakfa_tailer_offests_%s" % logger_name)
         if end:
             self.seek_end()
 
@@ -139,7 +139,7 @@ class KafkaProd(object):
                 min_queued_messages=self.batch_size) as producer:
             count = 0
             # Continously tail for the log using log_tailer.py
-            for line in Tailer(filepath, end=True).follow(self.batch_timeout/1000):
+            for line in Tailer(self.file_path, self.logger_name, end=True).follow(self.batch_timeout/1000):
                 #print line
                 if len(line) < 2:
                     continue
