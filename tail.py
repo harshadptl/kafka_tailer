@@ -54,7 +54,8 @@ class Tailer(object):
             self.seek(where)
             line = self.file.readline()
             if line:
-                #print "C :", line
+
+                # print "C :@", line, "@"
 
                 if trailing and line in self.line_terminators:
                     # This is just the line terminator added to the end of the file
@@ -100,7 +101,7 @@ class KafkaProd(object):
     """Updates Kafka Cluster with logs in async batches"""
 
     def __init__(self, kafka_url, filepath, topic_name, logger_name,
-                 ip_address, batch_size, batch_timeout):
+                 ip_address, batch_size, batch_timeout, truncate=1):
         self.inode_number = os.stat(filepath).st_ino
         self.file_path = filepath
         self.batch_size = batch_size
@@ -109,6 +110,8 @@ class KafkaProd(object):
         self.kafka_url = kafka_url
         self.batch_timeout = batch_timeout
         self.topic_name = topic_name
+        self.truncate = truncate
+
 
     def get_kafka_client(self):
         try:
@@ -138,13 +141,21 @@ class KafkaProd(object):
             # Continously tail for the log using log_tailer.py
             for line in Tailer(filepath, end=True).follow(self.batch_timeout/1000):
                 #print line
+                if len(line) < 2:
+                    continue
+                print len(line), line
                 count += 1
                 producer.produce("{}\t{}\t{}".format(self.logger_name, line,
                                                      self.ip_address),
                                  partition_key="{}".format(self.ip_address))
                 logging.debug(count, line)
                 # Check for every 100th batch for acknowledgement
-                if count == (self.batch_size * 10):
+                if count == (self.batch_size * 5):
+                    if self.truncate > 0:
+                        print "Truncating.. to ", self.batch_size*5
+                        f = open(self.file_path,"w")
+                        f.truncate(self.batch_size*3)
+                        f.close()
                     count = 0
                     success = 0
                     fail = 0
@@ -173,7 +184,7 @@ class KafkaProd(object):
 if __name__ == '__main__':
     if len(sys.argv) < 7:
         print "Usage : python tail.py <kafka_url> <logpath>\
-        <topic_name> <logger_name> > <batch_size>  <batch_timeout_ms>"
+        <topic_name> <logger_name> > <batch_size>  <batch_timeout_ms> OPTIONAL : <truncate_1>"
 
         sys.exit(1)
 
@@ -183,6 +194,11 @@ if __name__ == '__main__':
     filepath = sys.argv[2]
     topic_name = sys.argv[3]
     logger_name = sys.argv[4]
+
+    try :
+        truncate = int(sys.argv[6]) > 0
+    except:
+        truncate = 0
     ip_address = str(socket.gethostname())
     kp = KafkaProd(kafka_url, filepath, topic_name, logger_name, ip_address,
                    batch_size, batch_timeout)
