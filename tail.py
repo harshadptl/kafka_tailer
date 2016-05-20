@@ -44,6 +44,7 @@ class Tailer(object):
             except:
                 self.shelve['inode'] = self.inode_number
                 self.shelve['offset'] = 0
+            self.shelve.sync()
         except Exception, e:
             logging.error(
                 "Error shelving variables into file, check if all dependency related to python package shelve is satisfied.")
@@ -107,14 +108,13 @@ class Tailer(object):
                         self.file = open(self.filepath, 'rb')
                         self.inode_number = os.stat(self.filepath).st_ino
                         self.file.seek(0, 0)
-                        self.shelve = shelve.open(
-                            "/tmp/kakfa_tailer_offests_{}_{}".format(
-                                logger_name, self.filepath.split('/')[-1]))
                         self.shelve['inode'] = self.inode_number
                         self.shelve['offset'] = 0
+                        self.shelve.sync()
                 # If not, wait for new log to be created.
-                except (OSError, IOError):
-                    print "EXCEPT"
+                except Exception, e::
+                    logging.error("Log rotate or shelve Error")
+                    logging.error(str(e))
                     time.sleep(delay * 5.0)
 
     def __iter__(self):
