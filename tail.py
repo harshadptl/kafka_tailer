@@ -69,6 +69,8 @@ class Tailer(object):
         """
         trailing = True
         while 1:
+            # Introduce a delay to limit cpu cycle usage.
+            time.sleep(delay)
             try:
                 where = self.shelve['offset']
             except:
@@ -101,7 +103,7 @@ class Tailer(object):
                 trailing = True
                 # print "SEEK : ", where
                 self.seek(where)
-                time.sleep(delay)
+                time.sleep(delay*10)
                 # Check if log has been rotated/truncated
                 try:
                     ost = os.stat(self.filepath)
@@ -143,7 +145,7 @@ class KafkaProd(object):
         self.logger_name = logger_name
         self.ip_address = ip_address
         self.kafka_url = kafka_url
-        self.batch_timeout = batch_timeout
+        self.batch_timeout = float(batch_timeout)
         self.topic_name = topic_name
         self.truncate = truncate
 
@@ -173,9 +175,10 @@ class KafkaProd(object):
                 min_queued_messages=self.batch_size) as producer:
             count = 0
             # Continously tail for the log using log_tailer.py
+            print "delay " + str(self.batch_timeout / 1000.0)
             for line in Tailer(self.file_path,
                                self.logger_name,
-                               end=True).follow(self.batch_timeout / 1000):
+                               end=True).follow(self.batch_timeout / 1000.0):
                 if len(line) < 2:
                     logging.info("skipping line : {}".format(line))
                     continue
