@@ -90,8 +90,9 @@ class Tailer(object):
                     self.shelve['prev_offset'] = where
                     self.shelve['offset'] = self.file.tell()
                     self.shelve.sync()
-                except:
-                    print "shelve exception"
+                except Exception, e:
+                    logging.error("Shelve Exception")
+                    logging.error(str(e))
                     continue
             else:
                 trailing = True
