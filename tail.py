@@ -37,11 +37,11 @@ class Tailer(object):
             self.shelve = shelve.open("/tmp/kakfa_tailer_offests_{}_{}".format(
                 logger_name, self.filepath.split('/')[-1]))
             # If log has been rotated reset offset.
-            if self.shelve.has_key('inode'):
+            try:
                 if self.shelve['inode'] != self.inode_number:
                     self.shelve['offset'] = 0
                     self.shelve['inode'] = self.inode_number
-            else:
+            except:
                 self.shelve['inode'] = self.inode_number
                 self.shelve['offset'] = 0
         except Exception, e:
@@ -65,14 +65,14 @@ class Tailer(object):
         """
         trailing = True
         while 1:
-            if self.shelve.has_key('offset'):
+            try:
                 where = self.shelve['offset']
-            else:
+            except:
                 where = 0
             self.seek(where)
             line = self.file.readline()
             if line:
-                # print "C :@", line, "@"
+                print "C :@", line, "@"
                 if trailing and line in self.line_terminators:
                     # This is just the line terminator added to the end of the file
                     # before a new line, ignore.
@@ -83,9 +83,15 @@ class Tailer(object):
                     line = line[:-1]
 
                 trailing = False
-                self.shelve['prev_offset'] = where
+
                 yield line
-                self.shelve['offset'] = self.file.tell()
+                try:
+                    self.shelve['prev_offset'] = where
+                    self.shelve['offset'] = self.file.tell()
+                    self.shelve.sync()
+                except:
+                    print "shelve exception"
+                    continue
             else:
                 trailing = True
                 # print "SEEK : ", where
@@ -168,6 +174,7 @@ class KafkaProd(object):
                                end=True).follow(self.batch_timeout / 1000):
                 # print line
                 if len(line) < 2:
+                    print "ski[pping line :", line
                     continue
                 count += 1
                 producer.produce("{}\t{}\t{}".format(self.logger_name, line,
