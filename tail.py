@@ -1,7 +1,11 @@
 '''
-    Tails logs with *log_tailer.py* and pushes them to Kafka Server
-    in async batches.
+    - A script to tail a file and push lines to Kafka.
+    - It will be ideal to run this script on top a supervisor like 
+    *process control system*, during an event of unexpected network/cpu
+    outages the script exits abnormally and supervisor should try to 
+    restart tailer repeatedly. 
 '''
+
 import Queue
 import logging
 import os
@@ -12,10 +16,9 @@ import shelve
 
 from pykafka import KafkaClient
 
-# create logger
 logging.basicConfig(
-    format='%(asctime)s.%(msecs)s:%(name)s:%(thread)d:%(levelname)s:\
-    %(process)d:%(message)s',
+    format=
+    '%(asctime)s.%(msecs)s:%(name)s:%(thread)d:%(levelname)s:%(process)d:%(message)s',
     level=logging.INFO)
 
 
@@ -33,7 +36,7 @@ class Tailer(object):
         self.inode_number = os.stat(file_path).st_ino
         try:
             self.file = open(file_path, 'rb')
-            # shelve location a combination of loggerName and log filename.
+            # Shelve location a combination of loggerName and log filename.
             self.shelve = shelve.open("/tmp/kakfa_tailer_offests_{}_{}".format(
                 logger_name, self.filepath.split('/')[-1]))
             # If log has been rotated reset offset.
@@ -66,6 +69,8 @@ class Tailer(object):
         """
         trailing = True
         while 1:
+            # Introduce a delay to limit cpu cycle usage.
+            time.sleep(delay)
             try:
                 where = self.shelve['offset']
             except:
@@ -73,9 +78,9 @@ class Tailer(object):
             self.seek(where)
             line = self.file.readline()
             if line:
-                print "C :@", line, "@"
+                # print "C :@", line, "@"
                 if trailing and line in self.line_terminators:
-                    # This is just the line terminator added to the end of the file
+                    # A line terminator added to the end of the file
                     # before a new line, ignore.
                     trailing = False
                     continue
@@ -98,8 +103,8 @@ class Tailer(object):
                 trailing = True
                 # print "SEEK : ", where
                 self.seek(where)
-                time.sleep(delay)
-                # Check if log has been rotated
+                time.sleep(delay*10)
+                # Check if log has been rotated/truncated
                 try:
                     ost = os.stat(self.filepath)
                     if (self.inode_number != ost.st_ino) or (
@@ -114,7 +119,7 @@ class Tailer(object):
                         self.shelve.sync()
                 # If not, wait for new log to be created.
                 except Exception, e:
-                    logging.error("Log rotate or shelve Error")
+                    logging.error("Wait fo new log to be created.")
                     logging.error(str(e))
                     time.sleep(delay * 5.0)
 
@@ -140,7 +145,7 @@ class KafkaProd(object):
         self.logger_name = logger_name
         self.ip_address = ip_address
         self.kafka_url = kafka_url
-        self.batch_timeout = batch_timeout
+        self.batch_timeout = float(batch_timeout)
         self.topic_name = topic_name
         self.truncate = truncate
 
@@ -170,19 +175,18 @@ class KafkaProd(object):
                 min_queued_messages=self.batch_size) as producer:
             count = 0
             # Continously tail for the log using log_tailer.py
+            print "delay " + str(self.batch_timeout / 1000.0)
             for line in Tailer(self.file_path,
                                self.logger_name,
-                               end=True).follow(self.batch_timeout / 1000):
-                # print line
+                               end=True).follow(self.batch_timeout / 1000.0):
                 if len(line) < 2:
-                    print "ski[pping line :", line
+                    logging.info("skipping line : {}".format(line))
                     continue
                 count += 1
                 producer.produce("{}\t{}\t{}".format(self.logger_name, line,
                                                      self.ip_address),
                                  partition_key="{}".format(self.ip_address))
-                logging.debug(count, line)
-                # Check for every 100th batch for acknowledgement
+                # Check for every nth batch for acknowledgement
                 if count == (self.batch_size * 5):
                     if self.truncate > 0:
                         print "Truncating.. to ", self.batch_size * 5
@@ -198,10 +202,11 @@ class KafkaProd(object):
                                 block=False)
                             if exc is not None:
                                 logging.warn(
-                                    "Failed to deliver msg {}: {}".format(
+                                    "Failed to deliver msg to partition {}: {}".format(
                                         msg.partition_key, repr(exc)))
                                 fail += 1
                                 if fail >= self.batch_size:
+                                    # End abnormally and let supervisor restart me.
                                     sys.exit(1)
                             else:
                                 fail = 0
