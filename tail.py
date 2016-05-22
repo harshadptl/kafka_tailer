@@ -83,9 +83,6 @@ class Tailer(object):
             where = ost.st_size
 
         while 1:
-            # Introduce a delay to limit cpu cycle usage.
-            time.sleep(delay)
-            #self.seek(where)
             line = self.file.readline()
             if line:
                 if trailing and line in self.line_terminators:
@@ -121,7 +118,7 @@ class Tailer(object):
                 trailing = True
                 #self.seek(where)
 
-                time.sleep(delay * 20)
+                time.sleep(delay)
                 # Check if log has been rotated/truncated
                 try:
                     ost = os.stat(self.filepath)
@@ -243,6 +240,7 @@ class KafkaProd(object):
                                 logging.debug("Success")
                         except Queue.Empty:
                             time.sleep(.2)
+                            logging.info("Done {}".format(success))
                             break
 
 
