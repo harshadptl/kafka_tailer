@@ -73,18 +73,18 @@ class Tailer(object):
         except:
             where = 0
 
-        if explicit_where>0:
+        if explicit_where > 0:
             where = explicit_where
 
         print "START", where
         # sanity check
         ost = os.stat(self.filepath)
-        if ost.st_size < where :
+        if ost.st_size < where:
             where = ost.st_size
 
         while 1:
             # Introduce a delay to limit cpu cycle usage.
-            time.sleep(.1)
+            time.sleep(delay)
             #self.seek(where)
             line = self.file.readline()
             if line:
@@ -102,7 +102,7 @@ class Tailer(object):
 
                 where = self.file.tell()
                 yield line, where
-                if explicit_where>0:
+                if explicit_where > 0:
                     #print "EXPLICIT WHERE, ", explicit_where
                     where = explicit_where
                     self.seek(where)
@@ -121,7 +121,7 @@ class Tailer(object):
                 trailing = True
                 #self.seek(where)
 
-                time.sleep(0.2)
+                time.sleep(delay * 20)
                 # Check if log has been rotated/truncated
                 try:
                     ost = os.stat(self.filepath)
@@ -130,7 +130,7 @@ class Tailer(object):
                     if (self.inode_number != ost.st_ino) or \
                         (ost.st_size < where): # or
                         #(ost.st_size == where and last_mtime != mtime) : # last case : file truncated same size
-                        print "LOG CHANGED", where,  ost.st_size
+                        print "LOG CHANGED", where, ost.st_size
                         self.file.close()
                         self.file = open(self.filepath, 'rb')
                         self.inode_number = os.stat(self.filepath).st_ino
@@ -144,7 +144,7 @@ class Tailer(object):
                 except Exception, e:
                     logging.error("Wait fo new log to be created.")
                     logging.error(str(e))
-                    time.sleep(delay * 5.0)
+                    time.sleep(delay * 20)
 
     def __iter__(self):
         return self.follow()
@@ -199,9 +199,9 @@ class KafkaProd(object):
             count = 0
             where = 0
             # Continously tail for the log using log_tailer.py
-            for line,upto in Tailer(self.file_path,
-                               self.logger_name,
-                               end=True).follow(where, self.batch_timeout / 1000.0):
+            for line, upto in Tailer(self.file_path,
+                                     self.logger_name,
+                                     end=True).follow(where, 0.01):
                 if len(line) < 2:
                     continue
                 count += 1
@@ -218,7 +218,7 @@ class KafkaProd(object):
                         f.truncate(upto)
                         # goto end
                         f.seek(0, 2)
-                        print "NEW", upto,where
+                        print "NEW", upto, where
                         where = f.tell()
 
                         f.close()
