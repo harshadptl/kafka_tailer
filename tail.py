@@ -1,9 +1,9 @@
 '''
     - A script to tail a file and push lines to Kafka.
-    - It will be ideal to run this script on top a supervisor like 
+    - It will be ideal to run this script on top a supervisor like
     *process control system*, during an event of unexpected network/cpu
-    outages the script exits abnormally and supervisor should try to 
-    restart tailer repeatedly. 
+    outages the script exits abnormally and supervisor should try to
+    restart tailer repeatedly.
 '''
 
 import Queue
@@ -49,8 +49,7 @@ class Tailer(object):
                 self.shelve['offset'] = 0
             self.shelve.sync()
         except Exception, e:
-            logging.error(
-                "Error shelving variables into file, check if all dependency related to python package shelve is satisfied.")
+            logging.error("Error shelving variables into file.")
             logging.error(str(e))
             sys.exit(1)
         if end:
@@ -62,7 +61,7 @@ class Tailer(object):
     def seek(self, pos, whence=0):
         self.file.seek(pos, whence)
 
-    def follow(self, explicit_where=0, delay=0.01):
+    def follow(self, explicit_where=0, delay=0.001):
         """
         Iterator generator that returns lines as data is added to the file.
         Based on: http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/157035
@@ -88,7 +87,6 @@ class Tailer(object):
             time.sleep(delay)
             line = self.file.readline()
             if line:
-                print "IF"
                 if trailing and line in self.line_terminators:
                     # A line terminator added to the end of the file
                     # before a new line, ignore.
@@ -119,17 +117,15 @@ class Tailer(object):
                     logging.error(str(e))
                     continue
             else:
-                print "ELSE"
                 trailing = True
                 time.sleep(delay * 2)
                 #self.seek(where)
                 # Check if log has been rotated/truncated
                 try:
-                    if fstat_flag == 3:
+                    if fstat_flag == 5:
                         fstat_flag = 0
                         ost = os.stat(self.filepath)
                         mtime = ost.st_mtime
-
                         if (self.inode_number != ost.st_ino) or \
                             (ost.st_size < where): # or
                             #(ost.st_size == where and last_mtime != mtime) : # last case : file truncated same size
@@ -212,7 +208,6 @@ class KafkaProd(object):
                 producer.produce("{}\t{}\t{}".format(self.logger_name, line,
                                                      self.ip_address),
                                  partition_key="{}".format(self.ip_address))
-                #print count
                 # Check for every nth batch for acknowledgement
                 if count == (self.batch_size * 5):
                     if self.truncate > 0:
@@ -247,7 +242,7 @@ class KafkaProd(object):
                                 logging.debug("Success")
                         except Queue.Empty:
                             time.sleep(.2)
-                            logging.info("Done {}".format(success))
+                            #logging.info("Done {}".format(success))
                             break
 
 
