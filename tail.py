@@ -81,10 +81,14 @@ class Tailer(object):
         ost = os.stat(self.filepath)
         if ost.st_size < where:
             where = ost.st_size
-
+        # A flag to limit number of fstat calls
+        fstat_flag = 0
         while 1:
+            # Introduce a delay to limit cpu cycle usage.
+            time.sleep(delay)
             line = self.file.readline()
             if line:
+                print "IF"
                 if trailing and line in self.line_terminators:
                     # A line terminator added to the end of the file
                     # before a new line, ignore.
@@ -115,33 +119,36 @@ class Tailer(object):
                     logging.error(str(e))
                     continue
             else:
+                print "ELSE"
                 trailing = True
+                time.sleep(delay * 2)
                 #self.seek(where)
-
-                time.sleep(delay)
                 # Check if log has been rotated/truncated
                 try:
-                    ost = os.stat(self.filepath)
-                    mtime = ost.st_mtime
+                    if fstat_flag == 3:
+                        fstat_flag = 0
+                        ost = os.stat(self.filepath)
+                        mtime = ost.st_mtime
 
-                    if (self.inode_number != ost.st_ino) or \
-                        (ost.st_size < where): # or
-                        #(ost.st_size == where and last_mtime != mtime) : # last case : file truncated same size
-                        print "LOG CHANGED", where, ost.st_size
-                        self.file.close()
-                        self.file = open(self.filepath, 'rb')
-                        self.inode_number = os.stat(self.filepath).st_ino
-                        self.file.seek(0, 0)
-                        self.shelve['inode'] = self.inode_number
-                        self.shelve['offset'] = 0
-                        self.shelve.sync()
-                        where = 0
-
+                        if (self.inode_number != ost.st_ino) or \
+                            (ost.st_size < where): # or
+                            #(ost.st_size == where and last_mtime != mtime) : # last case : file truncated same size
+                            print "LOG CHANGED", where, ost.st_size
+                            self.file.close()
+                            self.file = open(self.filepath, 'rb')
+                            self.inode_number = os.stat(self.filepath).st_ino
+                            self.file.seek(0, 0)
+                            self.shelve['inode'] = self.inode_number
+                            self.shelve['offset'] = 0
+                            self.shelve.sync()
+                            where = 0
+                    else:
+                        fstat_flag += 1
                 # If not, wait for new log to be created.
                 except Exception, e:
                     logging.error("Wait fo new log to be created.")
                     logging.error(str(e))
-                    time.sleep(delay * 20)
+                    time.sleep(delay * 20.0)
 
     def __iter__(self):
         return self.follow()
