@@ -1,9 +1,9 @@
 '''
     - A script to tail a file and push lines to Kafka.
-    - It will be ideal to run this script on top a supervisor like 
+    - It will be ideal to run this script on top a supervisor like
     *process control system*, during an event of unexpected network/cpu
-    outages the script exits abnormally and supervisor should try to 
-    restart tailer repeatedly. 
+    outages the script exits abnormally and supervisor should try to
+    restart tailer repeatedly.
 '''
 
 import Queue
@@ -49,8 +49,7 @@ class Tailer(object):
                 self.shelve['offset'] = 0
             self.shelve.sync()
         except Exception, e:
-            logging.error(
-                "Error shelving variables into file, check if all dependency related to python package shelve is satisfied.")
+            logging.error("Error shelving variables into file.")
             logging.error(str(e))
             sys.exit(1)
         if end:
@@ -62,7 +61,7 @@ class Tailer(object):
     def seek(self, pos, whence=0):
         self.file.seek(pos, whence)
 
-    def follow(self, explicit_where=0, delay=0.01):
+    def follow(self, explicit_where=0, delay=0.001):
         """
         Iterator generator that returns lines as data is added to the file.
         Based on: http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/157035
@@ -73,19 +72,19 @@ class Tailer(object):
         except:
             where = 0
 
-        if explicit_where>0:
+        if explicit_where > 0:
             where = explicit_where
 
         print "START", where
         # sanity check
         ost = os.stat(self.filepath)
-        if ost.st_size < where :
+        if ost.st_size < where:
             where = ost.st_size
-
+        # A flag to limit number of fstat calls
+        fstat_flag = 0
         while 1:
             # Introduce a delay to limit cpu cycle usage.
-            time.sleep(.1)
-            #self.seek(where)
+            time.sleep(delay)
             line = self.file.readline()
             if line:
                 if trailing and line in self.line_terminators:
@@ -102,7 +101,7 @@ class Tailer(object):
 
                 where = self.file.tell()
                 yield line, where
-                if explicit_where>0:
+                if explicit_where > 0:
                     #print "EXPLICIT WHERE, ", explicit_where
                     where = explicit_where
                     self.seek(where)
@@ -119,32 +118,33 @@ class Tailer(object):
                     continue
             else:
                 trailing = True
+                time.sleep(delay * 2)
                 #self.seek(where)
-
-                time.sleep(0.2)
                 # Check if log has been rotated/truncated
                 try:
-                    ost = os.stat(self.filepath)
-                    mtime = ost.st_mtime
-
-                    if (self.inode_number != ost.st_ino) or \
-                        (ost.st_size < where): # or
-                        #(ost.st_size == where and last_mtime != mtime) : # last case : file truncated same size
-                        print "LOG CHANGED", where,  ost.st_size
-                        self.file.close()
-                        self.file = open(self.filepath, 'rb')
-                        self.inode_number = os.stat(self.filepath).st_ino
-                        self.file.seek(0, 0)
-                        self.shelve['inode'] = self.inode_number
-                        self.shelve['offset'] = 0
-                        self.shelve.sync()
-                        where = 0
-
+                    if fstat_flag == 5:
+                        fstat_flag = 0
+                        ost = os.stat(self.filepath)
+                        mtime = ost.st_mtime
+                        if (self.inode_number != ost.st_ino) or \
+                            (ost.st_size < where): # or
+                            #(ost.st_size == where and last_mtime != mtime) : # last case : file truncated same size
+                            print "LOG CHANGED", where, ost.st_size
+                            self.file.close()
+                            self.file = open(self.filepath, 'rb')
+                            self.inode_number = os.stat(self.filepath).st_ino
+                            self.file.seek(0, 0)
+                            self.shelve['inode'] = self.inode_number
+                            self.shelve['offset'] = 0
+                            self.shelve.sync()
+                            where = 0
+                    else:
+                        fstat_flag += 1
                 # If not, wait for new log to be created.
                 except Exception, e:
                     logging.error("Wait fo new log to be created.")
                     logging.error(str(e))
-                    time.sleep(delay * 5.0)
+                    time.sleep(delay * 20.0)
 
     def __iter__(self):
         return self.follow()
@@ -199,16 +199,15 @@ class KafkaProd(object):
             count = 0
             where = 0
             # Continously tail for the log using log_tailer.py
-            for line,upto in Tailer(self.file_path,
-                               self.logger_name,
-                               end=True).follow(where, self.batch_timeout / 1000.0):
+            for line, upto in Tailer(self.file_path,
+                                     self.logger_name,
+                                     end=True).follow(where, 0.01):
                 if len(line) < 2:
                     continue
                 count += 1
                 producer.produce("{}\t{}\t{}".format(self.logger_name, line,
                                                      self.ip_address),
                                  partition_key="{}".format(self.ip_address))
-                #print count
                 # Check for every nth batch for acknowledgement
                 if count == (self.batch_size * 5):
                     if self.truncate > 0:
@@ -218,7 +217,7 @@ class KafkaProd(object):
                         f.truncate(upto)
                         # goto end
                         f.seek(0, 2)
-                        print "NEW", upto,where
+                        print "NEW", upto, where
                         where = f.tell()
 
                         f.close()
@@ -243,6 +242,7 @@ class KafkaProd(object):
                                 logging.debug("Success")
                         except Queue.Empty:
                             time.sleep(.2)
+                            #logging.info("Done {}".format(success))
                             break
 
 
