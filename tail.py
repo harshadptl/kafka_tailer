@@ -83,8 +83,6 @@ class Tailer(object):
         # A flag to limit number of fstat calls
         fstat_flag = 0
         while 1:
-            # Introduce a delay to limit cpu cycle usage.
-            time.sleep(delay)
             line = self.file.readline()
             if line:
                 if trailing and line in self.line_terminators:
@@ -118,11 +116,11 @@ class Tailer(object):
                     continue
             else:
                 trailing = True
-                time.sleep(delay * 2)
+                time.sleep(delay)
                 #self.seek(where)
                 # Check if log has been rotated/truncated
                 try:
-                    if fstat_flag == 5:
+                    if fstat_flag == 10:
                         fstat_flag = 0
                         ost = os.stat(self.filepath)
                         mtime = ost.st_mtime
@@ -201,7 +199,7 @@ class KafkaProd(object):
             # Continously tail for the log using log_tailer.py
             for line, upto in Tailer(self.file_path,
                                      self.logger_name,
-                                     end=True).follow(where, 0.01):
+                                     end=True).follow(where, 0.0001):
                 if len(line) < 2:
                     continue
                 count += 1
@@ -242,7 +240,7 @@ class KafkaProd(object):
                                 logging.debug("Success")
                         except Queue.Empty:
                             time.sleep(.2)
-                            #logging.info("Done {}".format(success))
+                            logging.info("Done {}".format(success))
                             break
 
 
