@@ -202,6 +202,9 @@ class KafkaProd(object):
                                      end=True).follow(where, 0.0001):
                 if len(line) < 2:
                     continue
+                
+                line = convert(line)
+                
                 count += 1
                 producer.produce("{}\t{}\t{}".format(self.logger_name, line,
                                                      self.ip_address),
@@ -243,6 +246,9 @@ class KafkaProd(object):
                             logging.info("Done {}".format(success))
                             break
 
+def convert(line):
+    udata=line.decode("utf-8")
+    return udata.encode("ascii","ignore")
 
 if __name__ == '__main__':
     if len(sys.argv) < 7:
