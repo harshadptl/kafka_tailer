@@ -94,17 +94,13 @@ class Tailer(object):
                 if line[-1] in self.line_terminators:
                     line = line[:-1]
 
-                # print  where, "C :@", line, "@"
                 trailing = False
 
                 where = self.file.tell()
                 yield line, where
                 if explicit_where > 0:
-                    #print "EXPLICIT WHERE, ", explicit_where
                     where = explicit_where
                     self.seek(where)
-
-                #print where, self.file.tell()
 
                 try:
                     self.shelve['prev_offset'] = where
@@ -117,7 +113,7 @@ class Tailer(object):
             else:
                 trailing = True
                 time.sleep(delay)
-                #self.seek(where)
+                # self.seek(where)
                 # Check if log has been rotated/truncated
                 try:
                     if fstat_flag == 10:
@@ -125,7 +121,7 @@ class Tailer(object):
                         ost = os.stat(self.filepath)
                         mtime = ost.st_mtime
                         if (self.inode_number != ost.st_ino) or \
-                            (ost.st_size < where): # or
+                                (ost.st_size < where):  # or
                             #(ost.st_size == where and last_mtime != mtime) : # last case : file truncated same size
                             print "LOG CHANGED", where, ost.st_size
                             self.file.close()
@@ -202,13 +198,21 @@ class KafkaProd(object):
                                      end=True).follow(where, 0.0001):
                 if len(line) < 2:
                     continue
-                
+
                 line = convert(line)
-                
+
                 count += 1
-                producer.produce("{}\t{}\t{}".format(self.logger_name, line,
-                                                     self.ip_address),
-                                 partition_key="{}".format(self.ip_address))
+                try:
+                    producer.produce(
+                        "{}\t{}\t{}".format(self.logger_name, line,
+                                            self.ip_address),
+                        partition_key="{}".format(self.ip_address))
+                except Exception, e:
+                    # Leader Election / bad zookeeper state.
+                    time.sleep(60 * 5)
+                    logging.error(str(e))
+                    sys.exit(1)
+
                 # Check for every nth batch for acknowledgement
                 if count == (self.batch_size * 5):
                     if self.truncate > 0:
@@ -235,7 +239,8 @@ class KafkaProd(object):
                                         msg.partition_key, repr(exc)))
                                 fail += 1
                                 if fail >= self.batch_size:
-                                    # End abnormally and let supervisor restart me.
+                                    # End abnormally and let supervisor restart
+                                    # me.
                                     sys.exit(1)
                             else:
                                 fail = 0
@@ -246,9 +251,11 @@ class KafkaProd(object):
                             logging.info("Done {}".format(success))
                             break
 
+
 def convert(line):
-    udata=line.decode("utf-8")
-    return udata.encode("ascii","ignore")
+    udata = line.decode("utf-8")
+    return udata.encode("ascii", "ignore")
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 7:
