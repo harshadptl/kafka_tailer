@@ -247,7 +247,7 @@ class KafkaProd(object):
                             break
 
 def convert(line):
-    udata=line.decode("utf-8")
+    udata=line.decode("utf-8", errors="ignore")
     return udata.encode("ascii","ignore")
 
 if __name__ == '__main__':
